@@ -260,7 +260,9 @@ func (c *Converter) processCodeBlock(lines []string, start int) int {
 	i := start + 1
 	var codeLines []string
 	for i < len(lines) {
-		if lines[i] == "{code}" {
+		end := strings.Index(lines[i], "{code}")
+		if end != -1 {
+			codeLines = append(codeLines, lines[i][0:end])
 			i++
 			break
 		}
@@ -389,11 +391,14 @@ func (c *Converter) processPanel(lines []string, start int) int {
 // processParagraph handles regular paragraphs
 func (c *Converter) processParagraph(line string) {
 	line = c.processInline(line)
-	c.output.WriteString(line + "\n")
+	line = strings.TrimSpace(line)
+	if line != "" {
+		c.output.WriteString(line + "\n")
+	}
 }
 
 // processInline processes inline formatting
-var linkreg *regexp.Regexp = regexp.MustCompile(`(?ms:^https://(.+?)(?:\s|$))`)
+var linkreg *regexp.Regexp = regexp.MustCompile(`\s`)
 
 func (c *Converter) processInline(text string) string {
 	var result strings.Builder
@@ -411,18 +416,34 @@ func (c *Converter) processInline(text string) string {
 			}
 		}
 
-		// TODO: detect single links...
-		// if matched := linkreg.FindStringIndex(text[i:]); matched != nil {
-		// 	n := len(c.knownlinks)
-		// 	content := text[i+matched[0]:i+matched[1]]
-		// 	c.knownlinks = append(c.knownlinks, [2]string{
-		// 		fmt.Sprintf("%d", n), content,
-		// 	})
-		// 	linkText := fmt.Sprintf("link-%d", n)
-		// 	result.WriteString(fmt.Sprintf("[%s][%d] ", linkText, n))
-		// 	i += len(content)+1
-		// 	continue
-		// }
+		if strings.HasPrefix(text[i:], "{color") {
+			start := strings.Index(text[i+1:], "}")
+			if start != -1 {
+				end := strings.Index(text[i+1:], "{color}")
+				if end != -1 {
+					content := text[i+start+1+1 : i+1+end]
+					result.WriteString(strings.TrimSpace(content))
+					i += end + 7 + 1
+					continue
+				}
+			}
+		}
+
+		if strings.HasPrefix(text[i:], "https://") {
+			n := len(c.knownlinks)
+			end := strings.Index(text[i:], " ")
+			if end == -1 {
+				end = len(text[i:])
+			}
+			content := text[i : i+end]
+			c.knownlinks = append(c.knownlinks, [2]string{
+				fmt.Sprintf("%d", n), content,
+			})
+			linkText := fmt.Sprintf("link-%d", n)
+			result.WriteString(fmt.Sprintf("[%s][%d] ", linkText, n))
+			i += end
+			continue
+		}
 
 		// Images: !url|alt=text! or !url!
 		if text[i] == '!' {
@@ -449,18 +470,31 @@ func (c *Converter) processInline(text string) string {
 				if pipeIdx := strings.Index(content, "|"); pipeIdx != -1 {
 					linkText := content[:pipeIdx]
 					url := content[pipeIdx+1:]
-
+					foundmail := false
 					n := len(c.knownlinks)
 					if linkText == url {
 						c.knownlinks = append(c.knownlinks, [2]string{
 							fmt.Sprintf("%d", n), url,
 						})
 						linkText = fmt.Sprintf("link-%d", n)
+
 					} else {
-						linkText = strings.TrimSpace(linkText)
-						c.knownlinks = append(c.knownlinks, [2]string{
-							fmt.Sprintf("%d", n), fmt.Sprintf("%s <%s>", linkText, url),
-						})
+						if strings.HasPrefix(url, "mailto:") {
+							url = url[7:]
+							foundmail = true
+						}
+
+						linkText = c.processInline(strings.TrimSpace(linkText))
+						if foundmail {
+							c.knownlinks = append(c.knownlinks, [2]string{
+								fmt.Sprintf("%d", n), fmt.Sprintf("%s <%s>", ":mail:", url),
+							})
+						} else {
+							c.knownlinks = append(c.knownlinks, [2]string{
+								fmt.Sprintf("%d", n), fmt.Sprintf("%s <%s>", linkText, url),
+							})
+
+						}
 					}
 
 					result.WriteString(fmt.Sprintf("[%s][%d] ", linkText, n))
@@ -468,10 +502,23 @@ func (c *Converter) processInline(text string) string {
 					if content[0] == '~' {
 						result.WriteString(fmt.Sprintf("@[%s]", content))
 					} else {
-						result.WriteString(fmt.Sprintf("%s", content))
+						n := len(c.knownlinks)
+						c.knownlinks = append(c.knownlinks, [2]string{
+							fmt.Sprintf("%d", n), content,
+						})
+						result.WriteString(fmt.Sprintf("[link-%d]", n))
 					}
 				}
 				i += end + 2
+				continue
+			}
+		}
+
+		if strings.HasPrefix(text[i:], "{*}") {
+			end := strings.Index(text[i+3:], "{*}")
+			if end != -1 {
+				result.WriteString("**" + text[i+3:i+3+end] + "**")
+				i += end + 6
 				continue
 			}
 		}
