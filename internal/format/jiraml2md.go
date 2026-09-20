@@ -26,7 +26,7 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-package main
+package format
 
 import (
 	"bufio"
@@ -426,7 +426,7 @@ func (c *Converter) processInline(text string) string {
 				} else {
 					if content[0] == '~' {
 						result.WriteString(fmt.Sprintf("@[%s]", content))
-					}else{
+					} else {
 						result.WriteString(fmt.Sprintf("%s", content))
 					}
 				}
