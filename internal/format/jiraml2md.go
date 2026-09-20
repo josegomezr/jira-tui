@@ -39,15 +39,17 @@ import (
 
 // Converter converts Jira Wiki Markup to Markdown
 type Converter struct {
-	input  *bufio.Scanner
-	output *bytes.Buffer
+	input      *bufio.Scanner
+	output     *bytes.Buffer
+	knownlinks [][2]string
 }
 
 // NewConverter creates a new Jira to Markdown converter
 func NewConverter(r io.Reader) *Converter {
 	return &Converter{
-		input:  bufio.NewScanner(r),
-		output: &bytes.Buffer{},
+		input:      bufio.NewScanner(r),
+		output:     &bytes.Buffer{},
+		knownlinks: [][2]string{},
 	}
 }
 
@@ -122,6 +124,16 @@ func (c *Converter) Convert() (string, error) {
 		// Regular paragraph
 		c.processParagraph(line)
 		i++
+	}
+
+	if len(c.knownlinks) > 0 {
+		c.output.WriteString("\n--\n")
+		for _, linkpair := range c.knownlinks {
+			ref := linkpair[0]
+			href := linkpair[1]
+
+			c.output.WriteString(fmt.Sprintf("[%s]: %s\n", ref, href))
+		}
 	}
 
 	return c.output.String(), nil
@@ -381,6 +393,8 @@ func (c *Converter) processParagraph(line string) {
 }
 
 // processInline processes inline formatting
+var linkreg *regexp.Regexp = regexp.MustCompile(`(?ms:^https://(.+?)(?:\s|$))`)
+
 func (c *Converter) processInline(text string) string {
 	var result strings.Builder
 	i := 0
@@ -396,6 +410,19 @@ func (c *Converter) processInline(text string) string {
 				continue
 			}
 		}
+
+		// TODO: detect single links...
+		// if matched := linkreg.FindStringIndex(text[i:]); matched != nil {
+		// 	n := len(c.knownlinks)
+		// 	content := text[i+matched[0]:i+matched[1]]
+		// 	c.knownlinks = append(c.knownlinks, [2]string{
+		// 		fmt.Sprintf("%d", n), content,
+		// 	})
+		// 	linkText := fmt.Sprintf("link-%d", n)
+		// 	result.WriteString(fmt.Sprintf("[%s][%d] ", linkText, n))
+		// 	i += len(content)+1
+		// 	continue
+		// }
 
 		// Images: !url|alt=text! or !url!
 		if text[i] == '!' {
@@ -422,7 +449,21 @@ func (c *Converter) processInline(text string) string {
 				if pipeIdx := strings.Index(content, "|"); pipeIdx != -1 {
 					linkText := content[:pipeIdx]
 					url := content[pipeIdx+1:]
-					result.WriteString(fmt.Sprintf("[%s](%s)", linkText, url))
+
+					n := len(c.knownlinks)
+					if linkText == url {
+						c.knownlinks = append(c.knownlinks, [2]string{
+							fmt.Sprintf("%d", n), url,
+						})
+						linkText = fmt.Sprintf("link-%d", n)
+					} else {
+						linkText = strings.TrimSpace(linkText)
+						c.knownlinks = append(c.knownlinks, [2]string{
+							fmt.Sprintf("%d", n), fmt.Sprintf("%s <%s>", linkText, url),
+						})
+					}
+
+					result.WriteString(fmt.Sprintf("[%s][%d] ", linkText, n))
 				} else {
 					if content[0] == '~' {
 						result.WriteString(fmt.Sprintf("@[%s]", content))
@@ -487,5 +528,6 @@ func (c *Converter) processInline(text string) string {
 		result.WriteByte(text[i])
 		i++
 	}
+
 	return result.String()
 }
