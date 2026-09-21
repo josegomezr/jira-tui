@@ -35,6 +35,7 @@ type model struct {
 	ready   bool
 	state   int
 	width   int
+	focus   bool
 
 	currquery    string
 	contentpanel viewport.Model
@@ -50,8 +51,10 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m *model) writeContents() {
-	m.contentpanel.SetContent(lipgloss.NewStyle().Width(m.contentpanel.Width() - 2).Render(m.content))
-	m.metapanel.SetContent(lipgloss.NewStyle().Width(m.metapanel.Width() - 2).Render(m.meta))
+	m.contentpanel.SetContent(lipgloss.NewStyle().Render(
+		lipgloss.Wrap(m.content, max(0, m.contentpanel.Width()- 2), " "),
+	))
+	m.metapanel.SetContent(lipgloss.NewStyle().Width(max(m.metapanel.Width() - 2, 0)).Render(m.meta))
 }
 
 func (m *model) draw(width, height int) {
@@ -126,7 +129,7 @@ func (m *model) executeQueryCommand(ctx context.Context, val string) tea.Cmd {
 		return issueResult{
 			search:  val,
 			title:   format.FormatTitle(issue),
-			content: format.FormatContent(issue),
+			content: format.FormatContent(issue, true),
 			meta:    format.FormatMeta(issue),
 		}
 	}
@@ -165,6 +168,15 @@ func (m *model) handleMessage(msg tea.Msg, cmds *[]tea.Cmd) {
 			}
 		case "esc":
 			m.state = 0
+		case "f":
+			m.focus = !m.focus
+			if m.focus {
+				m.contentpanel.SetWidth(m.width)
+				m.metapanel.SetWidth(0)
+			}else{
+				m.contentpanel.SetWidth(m.width*2/3)
+				m.metapanel.SetWidth(m.width - m.contentpanel.Width())
+			}
 		case "tab":
 			m.state += 1
 			if m.state > 2 {
@@ -282,6 +294,20 @@ func main() {
 	arg := ""
 	if len(os.Args) > 1 {
 		arg = os.Args[1]
+	}
+
+	if os.Args[len(os.Args)-1] == "--just-print-it" && arg != "" {
+		// output to STDOUT
+		issue, _, err := jiraClient.Issue.Get(arg, nil)
+		if err != nil {
+			fmt.Println("Error fetching issue:", arg, err)
+			os.Exit(1)
+		}
+
+		fmt.Println(format.FormatTitle(issue), issue.Fields.Summary)
+		fmt.Println(format.FormatMeta(issue))
+		fmt.Println(format.FormatContent(issue, false))
+		os.Exit(0)
 	}
 
 	p := tea.NewProgram(

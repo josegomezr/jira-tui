@@ -9,7 +9,7 @@ Created at: {{ .Fields.Created | fromjiratime | date "2006-01-02 15:04:05 -0700"
 Last updated: {{ .Fields.Updated | fromjiratime | date "2006-01-02 15:04:05 -0700" }} [{{ .Fields.Updated | fromjiratime | agoshort }}]
 {{- with .Fields.Components }}
 
-Components: {{ range . }}{{ .Name }}{{ end }}
+Components: {{ range $idx, $cat := . }}{{ if (eq $idx 0) }}{{else}}, {{end}}{{ $cat.Name }}{{ end }}
 {{- end }}
 
 Priority: {{ .Fields.Priority.Name }}, Status: {{ .Fields.Status.Name }}

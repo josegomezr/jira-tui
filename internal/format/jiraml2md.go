@@ -81,6 +81,11 @@ func (c *Converter) Convert() (string, error) {
 			continue
 		}
 
+		if strings.HasPrefix(line, "{noformat") {
+			i = c.processCodeBlock(lines, i)
+			continue
+		}
+
 		// Handle horizontal rule
 		if line == "----" {
 			c.output.WriteString("---\n")
@@ -251,21 +256,43 @@ func (c *Converter) processCodeBlock(lines []string, start int) int {
 
 	// Extract language if specified
 	lang := ""
-	re := regexp.MustCompile(`{code:([^}]+)}`)
+	re := regexp.MustCompile(`\{code:([^}]+)}`)
 	matches := re.FindStringSubmatch(line)
-	if len(matches) >= 2 {
+	if len(matches) >= 1 {
 		lang = matches[1]
 	}
 
 	i := start + 1
 	var codeLines []string
+
+	if firstEnd := strings.Index(line, "}"); firstEnd != -1 {
+		matched := strings.TrimSpace(line[firstEnd+1:])
+		if matched != "" {
+			matched := strings.TrimSuffix(matched, "{code}")
+			matched = strings.TrimSuffix(matched, "{noformat}")
+			codeLines = append(codeLines, matched)
+		}
+	}
+
+
 	for i < len(lines) {
-		end := strings.Index(lines[i], "{code}")
-		if end != -1 {
-			codeLines = append(codeLines, lines[i][0:end])
+		if end := strings.Index(lines[i], "{code}"); end != -1 {
+			m := lines[i][0:end]
+			if m != "" {
+				codeLines = append(codeLines, lines[i][0:end])
+			}
 			i++
 			break
 		}
+		if end := strings.Index(lines[i], "{noformat}"); end != -1 {
+			m := lines[i][0:end]
+			if m != "" {
+				codeLines = append(codeLines, lines[i][0:end])
+			}
+			i++
+			break
+		}
+
 		codeLines = append(codeLines, lines[i])
 		i++
 	}
@@ -398,7 +425,7 @@ func (c *Converter) processParagraph(line string) {
 }
 
 // processInline processes inline formatting
-var linkreg *regexp.Regexp = regexp.MustCompile(`\s`)
+var linkreg *regexp.Regexp = regexp.MustCompile(`[\s\)]`)
 
 func (c *Converter) processInline(text string) string {
 	var result strings.Builder
@@ -419,28 +446,25 @@ func (c *Converter) processInline(text string) string {
 		if strings.HasPrefix(text[i:], "{color") {
 			start := strings.Index(text[i+1:], "}")
 			if start != -1 {
-				end := strings.Index(text[i+1:], "{color}")
-				if end != -1 {
-					content := text[i+start+1+1 : i+1+end]
-					result.WriteString(strings.TrimSpace(content))
-					i += end + 7 + 1
-					continue
-				}
+				i += start + 2
+				continue
 			}
 		}
 
 		if strings.HasPrefix(text[i:], "https://") {
 			n := len(c.knownlinks)
-			end := strings.Index(text[i:], " ")
-			if end == -1 {
-				end = len(text[i:])
+			end := len(text[i:])
+			loc := linkreg.FindStringIndex(text[i:])
+			_ = loc
+			if loc != nil {
+				end = loc[1]-1
 			}
 			content := text[i : i+end]
 			c.knownlinks = append(c.knownlinks, [2]string{
 				fmt.Sprintf("%d", n), content,
 			})
 			linkText := fmt.Sprintf("link-%d", n)
-			result.WriteString(fmt.Sprintf("[%s][%d] ", linkText, n))
+			result.WriteString(fmt.Sprintf("[%s][%d]", linkText, n))
 			i += end
 			continue
 		}
@@ -450,12 +474,16 @@ func (c *Converter) processInline(text string) string {
 			end := strings.Index(text[i+1:], "!")
 			if end != -1 {
 				content := text[i+1 : i+1+end]
+				n := len(c.knownlinks)
+				tag := fmt.Sprintf("image-%d", n)
 				if pipeIdx := strings.Index(content, "|alt="); pipeIdx != -1 {
 					url := content[:pipeIdx]
 					alt := content[pipeIdx+5:]
-					result.WriteString(fmt.Sprintf("![%s](%s)", alt, url))
+					c.knownlinks = append(c.knownlinks, [2]string{tag, url,})
+					result.WriteString(fmt.Sprintf("![%s][%s]", alt, tag))
 				} else {
-					result.WriteString(fmt.Sprintf("![](%s)", content))
+					c.knownlinks = append(c.knownlinks, [2]string{tag, content,})
+					result.WriteString(fmt.Sprintf("![][%s]", tag))
 				}
 				i += end + 2
 				continue
@@ -467,11 +495,13 @@ func (c *Converter) processInline(text string) string {
 			end := strings.Index(text[i+1:], "]")
 			if end != -1 {
 				content := text[i+1 : i+1+end]
+
 				if pipeIdx := strings.Index(content, "|"); pipeIdx != -1 {
 					linkText := content[:pipeIdx]
 					url := content[pipeIdx+1:]
 					foundmail := false
 					n := len(c.knownlinks)
+
 					if linkText == url {
 						c.knownlinks = append(c.knownlinks, [2]string{
 							fmt.Sprintf("%d", n), url,
@@ -484,29 +514,43 @@ func (c *Converter) processInline(text string) string {
 							foundmail = true
 						}
 
-						linkText = c.processInline(strings.TrimSpace(linkText))
+						if strings.HasPrefix(linkText, "https://") {
+							linkText = fmt.Sprintf("link-%d", n)
+						}else{
+							linkText = c.processInline(strings.TrimSpace(linkText))
+						}
+
 						if foundmail {
 							c.knownlinks = append(c.knownlinks, [2]string{
 								fmt.Sprintf("%d", n), fmt.Sprintf("%s <%s>", ":mail:", url),
 							})
 						} else {
 							c.knownlinks = append(c.knownlinks, [2]string{
-								fmt.Sprintf("%d", n), fmt.Sprintf("%s <%s>", linkText, url),
+								fmt.Sprintf("%d", n), fmt.Sprintf("%s <%s>", url, linkText),
 							})
-
 						}
 					}
 
-					result.WriteString(fmt.Sprintf("[%s][%d] ", linkText, n))
-				} else {
-					if content[0] == '~' {
+					result.WriteString(fmt.Sprintf("[%s][%d]", linkText, n))
+				}else {
+					if strings.HasPrefix("http:", content){
+						// result.WriteString("["+content+"]")
+						n := len(c.knownlinks)
+						tag := fmt.Sprintf("[%d]", n)
+
+						c.knownlinks = append(c.knownlinks, [2]string{
+							fmt.Sprintf("%d", n), content,
+						})
+
+						result.WriteString(fmt.Sprintf("[link-%d]%s", n, tag))
+					}else if content[0] == '~' {
 						result.WriteString(fmt.Sprintf("@[%s]", content))
 					} else {
 						n := len(c.knownlinks)
 						c.knownlinks = append(c.knownlinks, [2]string{
 							fmt.Sprintf("%d", n), content,
 						})
-						result.WriteString(fmt.Sprintf("[link-%d]", n))
+						result.WriteString(fmt.Sprintf("[link-%d][%d]", n, n))
 					}
 				}
 				i += end + 2
@@ -524,11 +568,21 @@ func (c *Converter) processInline(text string) string {
 		}
 
 		// Code: {{code}}
+		if strings.HasPrefix(text[i:], "\\{\\{") {
+			end := strings.Index(text[i+2:], "}}")
+			if end != -1 {
+				result.WriteString("`")
+				result.WriteString(c.processInline(text[i+4 : i+2+end]))
+				result.WriteString("`")
+				i += end + 6
+				continue
+			}
+		}
 		if i < len(text)-1 && text[i] == '{' && text[i+1] == '{' {
 			end := strings.Index(text[i+2:], "}}")
 			if end != -1 {
 				result.WriteString("`")
-				result.WriteString(text[i+2 : i+2+end])
+				result.WriteString(c.processInline(text[i+2 : i+2+end]))
 				result.WriteString("`")
 				i += end + 4
 				continue
@@ -540,9 +594,9 @@ func (c *Converter) processInline(text string) string {
 		if i < len(text)-1 && text[i] == '*' && text[i+1] == '_' {
 			end := strings.Index(text[i+2:], "_*")
 			if end != -1 {
-				result.WriteString("***")
+				result.WriteString("__**")
 				result.WriteString(text[i+2 : i+2+end])
-				result.WriteString("***")
+				result.WriteString("**__")
 				i += end + 4
 				continue
 			}
@@ -560,13 +614,13 @@ func (c *Converter) processInline(text string) string {
 			}
 		}
 
-		// Italic: _text_ -> *text*
+		// Italic: _text_ -> __text__
 		if text[i] == '_' {
 			end := strings.Index(text[i+1:], "_")
 			if end != -1 {
-				result.WriteString("*")
+				result.WriteString("__")
 				result.WriteString(text[i+1 : i+1+end])
-				result.WriteString("*")
+				result.WriteString("__")
 				i += end + 2
 				continue
 			}

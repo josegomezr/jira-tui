@@ -1,10 +1,12 @@
-{{ trim .Fields.Summary }}
+{{- if .IncludeTitle }}
+{{ trim .Issue.Fields.Summary }}
 
+{{- end }}
 === Description ===
 
-{{ jiratomd .Fields.Description | trim }}
+{{ jiratomd .Issue.Fields.Description | trim }}
 
-{{- with .Fields.Attachments }}
+{{- with .Issue.Fields.Attachments }}
 
 === Attachments [{{ len . }}] ===
 {{ range $i, $Attachment := . }}
@@ -14,7 +16,7 @@
 {{- end }}
 {{- end }}
 
-{{- with .Fields.Comments }}
+{{- with .Issue.Fields.Comments }}
 
 === Comments [{{ len .Comments }}] ===
 {{ range $i, $Comment := .Comments }}

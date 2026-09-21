@@ -3,6 +3,7 @@ package format
 import (
 	_ "embed"
 	"fmt"
+	"slices"
 	"strings"
 	"text/template"
 	"time"
@@ -87,20 +88,25 @@ func makeTplEngine() *template.Template {
 		if len(pieces)-2 > 0 {
 			min = len(pieces) - 2
 		}
-		return strings.Join(pieces[min:len(pieces)], ", ")
+		arr := pieces[min:len(pieces)]
+		slices.Reverse(arr)
+		return strings.Join(arr, ", ")
 	}
 
 	return template.New("test").Funcs(funcs)
 }
 
-func FormatContent(issue *jira.Issue) string {
+func FormatContent(issue *jira.Issue, includeTitle bool) string {
 	bldr := &strings.Builder{}
 	engine := makeTplEngine()
 	tmpl, err := engine.Parse(string(contentTpl))
 	if err != nil {
 		panic(err)
 	}
-	err = tmpl.Execute(bldr, issue)
+	err = tmpl.Execute(bldr, struct{
+		Issue *jira.Issue
+		IncludeTitle bool
+	}{issue, includeTitle,})
 	if err != nil {
 		panic(err)
 	}
