@@ -83,11 +83,11 @@ func (m *model) draw(width, height int) {
 		m.contentpanel = viewport.New(viewport.WithWidth(width*2/3), viewport.WithHeight(height-verticalMarginHeight))
 		m.contentpanel.YPosition = headerHeight
 
-		m.contentpanel.Style = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, true)
+		m.contentpanel.Style = lipgloss.NewStyle() // .Border(lipgloss.NormalBorder(), false, true)
 
 		m.metapanel = viewport.New(viewport.WithWidth(width-m.contentpanel.Width()), viewport.WithHeight(height-verticalMarginHeight))
 		m.metapanel.YPosition = headerHeight
-		m.metapanel.Style = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, true)
+		m.metapanel.Style = lipgloss.NewStyle() // .Border(lipgloss.NormalBorder(), false, true)
 
 		m.ready = true
 	} else {
@@ -207,17 +207,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if m.state == 1 {
-		m.contentpanel.Style = lipgloss.NewStyle().Border(lipgloss.ASCIIBorder(), false, true)
-	} else {
-		m.contentpanel.Style = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, true)
+	if !m.focus {
+
+		if m.state == 1 {
+			m.contentpanel.Style = lipgloss.NewStyle() //.Border(lipgloss.ASCIIBorder(), false, true)
+		} else {
+			m.contentpanel.Style = lipgloss.NewStyle() //.Border(lipgloss.NormalBorder(), false, true)
+		}
+
+		if m.state == 2 {
+			m.metapanel.Style = lipgloss.NewStyle() //.Border(lipgloss.ASCIIBorder(), false, true)
+		} else {
+			m.metapanel.Style = lipgloss.NewStyle() //.Border(lipgloss.NormalBorder(), false, true)
+		}
 	}
 
-	if m.state == 2 {
-		m.metapanel.Style = lipgloss.NewStyle().Border(lipgloss.ASCIIBorder(), false, true)
-	} else {
-		m.metapanel.Style = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, true)
-	}
 
 	if m.state == 0 {
 		q, cmd := m.query.Update(msg)
