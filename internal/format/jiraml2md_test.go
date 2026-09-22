@@ -118,6 +118,14 @@ func TestExtractLink(t *testing.T) {
 			"[baz][0]\n\n--\n[0]: https://foo.bar/ <baz>\n",
 		},
 		{
+			"[1]\n",
+			"[1]\n",
+		},
+		{
+			"\\[1]\n",
+			"[1]\n",
+		},
+		{
 			"Something [here|https://foo.bar/] and here.\n",
 			"Something [here][0] and here.\n\n--\n[0]: https://foo.bar/ <here>\n",
 		},

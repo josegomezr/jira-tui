@@ -491,6 +491,14 @@ func (c *Converter) processInline(text string) string {
 		}
 
 		// Links: [text|url] or [url]
+		if text[i] == '\\' {
+			if text[i+1] == '[' {
+				result.WriteByte(text[i+1])
+				i += 2
+				continue
+			}
+		}
+
 		if text[i] == '[' {
 			end := strings.Index(text[i+1:], "]")
 			if end != -1 {
@@ -533,8 +541,7 @@ func (c *Converter) processInline(text string) string {
 
 					result.WriteString(fmt.Sprintf("[%s][%d]", linkText, n))
 				}else {
-					if strings.HasPrefix("http:", content){
-						// result.WriteString("["+content+"]")
+					if strings.HasPrefix(content, "http:") || strings.HasPrefix(content, "https:") {
 						n := len(c.knownlinks)
 						tag := fmt.Sprintf("[%d]", n)
 
@@ -546,11 +553,7 @@ func (c *Converter) processInline(text string) string {
 					}else if content[0] == '~' {
 						result.WriteString(fmt.Sprintf("@[%s]", content))
 					} else {
-						n := len(c.knownlinks)
-						c.knownlinks = append(c.knownlinks, [2]string{
-							fmt.Sprintf("%d", n), content,
-						})
-						result.WriteString(fmt.Sprintf("[link-%d][%d]", n, n))
+						result.WriteString(fmt.Sprintf("[%s]", content))
 					}
 				}
 				i += end + 2
